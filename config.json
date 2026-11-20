@@ -1,8 +1,9 @@
 {
  "Q_m3s": "ina",
- "_Q_nota": "\"ina\" = caudal en vivo del INA con el método del manuscrito; \"clim\" = mediana mensual 2000-2025; o un número en m3/s",
- "ina_series": {"parana": null, "salto_grande": null, "negro": null},
- "_ina_nota": "series_id del INA Alerta5 (caudal). Si son null se buscan por nombre de estación; el script imprime las que usó para fijarlas acá.",
- "Q_negro_defecto_m3s": 700,
- "_negro_nota": "se usa si el río Negro no está en el INA (valor medio aproximado; revisar)"
+ "_Q_nota": "\"ina\" = caudal en vivo del INA (ver ina_caudal.py); \"clim\" = mediana mensual 2000-2025; o un número en m3/s",
+ "ina_series": {
+  "santa_fe": 26627,
+  "salto_grande": 26675
+ },
+ "_ina_nota": "series_id INA Alerta5 de caudal medio diario (Santa Fe, Salto Grande Abajo)"
 }

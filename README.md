@@ -71,7 +71,7 @@ Salidas en `salida/`: `pronostico_ft_sal.png`, `pronostico_ft_sal.csv` e `index.
 
 Fuentes en vivo:
 - Salinidad: `https://exoflores.fisica.edu.uy/ultimos_4_dias.csv` (columna `Sal (psu)`, cada 10 min). Se usa la media del último día con datos.
-- Caudal: INA Alerta5 (`alerta.ina.gob.ar/a5`, API pública sin token). Igual que en el manuscrito: Q_RdlP = 1.367 × Q(Paraná, ciudad de Paraná, 20 días antes) + media de los 9 días previos de Q(Salto Grande) + Q(río Negro). Como el Paraná entra con 20 días de demora, el caudal del Paraná de los próximos 7 días ya está observado; para el Uruguay se usa persistencia. Si el INA falla, usa la climatología del mes y lo avisa en la figura. Como control, la figura muestra también la estación virtual del INA "Descarga al Río de la Plata" (serie 42277). La primera vez conviene correr `python ina_caudal.py`, que lista las series del INA y las que eligió, y fijar los `series_id` en `config.json`.
+- Caudal: INA Alerta5 (`alerta.ina.gob.ar/a5`, API pública sin token). Se usa el esquema del manuscrito (Paraná con 20 días de demora + media de 9 días del Uruguay), pero con las series que hoy publica el INA: la serie de caudal "Paraná" (26626) se discontinuó en diciembre de 2025 y el río Negro no está. Por eso los coeficientes se recalibraron contra `Caudal_Rio_de_la_Plata` de tfinal (2015–2025, 3961 días): Q_RdlP = 0.985 × Q(Santa Fe, 20 días antes) + 1.196 × media de 9 días de Q(Salto Grande Abajo) − 1273 (r = 0.974, RMSE = 2300 m³/s). Como el Paraná entra con 20 días de demora, su aporte para los próximos 7 días ya está observado; para el Uruguay se usa persistencia. Si el INA falla, se usa la climatología del mes y la figura lo avisa. Como referencia la figura muestra también la serie del INA "Descarga al Río de la Plata" (42277), que en 2015–2025 subestima la serie del paper en unos 5000 m³/s.
 - Viento: GFS (NOAA) a través de la API de Open-Meteo (`api.open-meteo.com/v1/gfs`, gratuita y sin clave), promediado en 15 puntos del dominio MODIS del paper (34–36°S, 58–54°W), con la misma media diaria que el ERA5 de entrenamiento (24 h previas a las 13 h).
 
 ## Publicarlo en el Google Site
@@ -88,7 +88,7 @@ Alternativa sin GitHub: correr el script con el Programador de tareas (Windows) 
 
 ## Limitaciones
 
-- Los `series_id` del INA para Paraná, Salto Grande y río Negro no los pude verificar desde acá (el sandbox no llega al INA): el script los busca por nombre y conviene confirmarlos una vez con `python ina_caudal.py`. Si el río Negro no está en el INA se usa un valor fijo (`Q_negro_defecto_m3s`, 700 m³/s, a revisar).
+- Con la fórmula original (1.367 × serie INA "Paraná" + Salto Grande + 700 de río Negro) el caudal da unos 3400 m³/s más alto que la serie del paper en 2015–2025; conviene revisar qué serie de Paraná se usó en el manuscrito.
 - El viento de entrenamiento es ERA5 y el operacional es GFS; puede haber sesgos sistemáticos entre ambos.
 - La salinidad de las playas de Montevideo es superficial y discreta; Punta del Tigre y La Paloma tienen otra frecuencia de muestreo.
 - Es un modelo estadístico lineal: suaviza los extremos y no resuelve la resuspensión.

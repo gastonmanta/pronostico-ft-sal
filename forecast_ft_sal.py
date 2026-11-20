@@ -5,8 +5,9 @@ Fuentes en vivo
   - Salinidad de Isla de Flores (EXO, cada 10 min): https://exoflores.fisica.edu.uy/ultimos_4_dias.csv
   - Viento GFS (NOAA) vía Open-Meteo, promediado en el dominio MODIS del paper
     (33.3-36.5°S, 58.7-53.1°W), igual que el ERA5 usado para entrenar.
-  - Caudal del RdlP: INA Alerta5 (ina_caudal.py), con el método del manuscrito:
-    1.367 x Paraná (ciudad de Paraná, 20 d antes) + media 9 d de (Salto Grande + río Negro).
+  - Caudal del RdlP: INA Alerta5 (ina_caudal.py), con el esquema del manuscrito:
+    Paraná con 20 d de demora + media de 9 d del Uruguay en Salto Grande.
+    Con las series vigentes del INA (Santa Fe y Salto Grande), recalibrado contra la serie del paper.
     En config.json "Q_m3s" puede ser "ina" (defecto), "clim" (mediana mensual) o un número.
 
 Uso
@@ -205,7 +206,7 @@ def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mod
             ax.text(j, i, f'{M[i, j]:.0f}', ha='center', va='center', fontsize=9,
                     color='white' if (M[i, j] < 6 or M[i, j] > 26) else 'k')
     ax.set_yticks(range(len(st))); ax.set_yticklabels([NAMES[s] for s in st])
-    ax.set_xticks(range(len(fc))); ax.set_xticklabels([f"{DIAS[d.dayofweek]}\n{d:%d/%m}" for d in fc.index], fontsize=8)
+    ax.set_xticks(range(len(fc))); ax.set_xticklabels([f"{DIAS[d.day_of_week]}\n{d:%d/%m}" for d in fc.index], fontsize=8)
     ax.set_title('d) Salinidad pronosticada en la costa uruguaya\n(oeste arriba, este abajo)', loc='left', fontweight='bold')
     cb = fig.colorbar(im, ax=ax, orientation='horizontal', fraction=0.05, pad=0.12); cb.set_label('Salinidad')
     for sp in ax.spines.values(): sp.set_visible(False)
@@ -229,7 +230,7 @@ def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mod
 
 
 def write_html(out_dir, fc, stamp):
-    rows = ''.join(f'<tr><td>{DIAS[d.dayofweek]} {d:%d/%m}</td><td>{r.TF_dist_km:+.0f} km ({r.TF_lon:.2f}°)</td><td>{100*r.P_ext:.0f}% / {100*r.P_ret:.0f}%</td>'
+    rows = ''.join(f'<tr><td>{DIAS[d.day_of_week]} {d:%d/%m}</td><td>{r.TF_dist_km:+.0f} km ({r.TF_lon:.2f}°)</td><td>{100*r.P_ext:.0f}% / {100*r.P_ret:.0f}%</td>'
                    + ''.join(f'<td>{r["S_" + s]:.1f}</td>' for s in NAMES) + '</tr>' for d, r in fc.iterrows())
     html = f'''<!DOCTYPE html><html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1"><title>Pronóstico FT y salinidad – RdlP</title>
@@ -277,11 +278,10 @@ def main():
         q_src = None
         if qcfg == 'ina':
             try:
-                Q, qinfo = ina_caudal.caudal_rdlp(t0, ids=cfg.get('ina_series'),
-                                                  q_negro_defecto=cfg.get('Q_negro_defecto_m3s', 700.0))
-                q_src = f"INA (1.367·Paraná[t−20 d] + Uruguay 9 d): {qinfo['Q_hoy']:,.0f} m³/s".replace(',', '.')
+                Q, qinfo = ina_caudal.caudal_rdlp(t0, ids=cfg.get('ina_series'))
+                q_src = f"INA (Santa Fe t−20 d + Salto Grande 9 d): {qinfo['Q_hoy']:,.0f} m³/s".replace(',', '.')
                 if qinfo.get('Q_INA_virtual'):
-                    q_src += f"  ·  INA 'Descarga al RdlP': {qinfo['Q_INA_virtual']:,.0f}".replace(',', '.')
+                    q_src += f"\n   (INA 'Descarga al RdlP': {qinfo['Q_INA_virtual']:,.0f})".replace(',', '.')
             except Exception as e:
                 print('[INA] falló, uso climatología:', e); qcfg = 'clim'
         if qcfg == 'clim':
