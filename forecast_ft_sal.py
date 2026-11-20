@@ -37,10 +37,18 @@ NAMES = {'Punta_del_Tigre': 'Punta del Tigre', 'Pajas_Blancas': 'Pajas Blancas',
          'Isla_de_Flores': 'Isla de Flores', 'La_Paloma': 'La Paloma'}
 
 
-def http_get(url, timeout=60):
+def http_get(url, timeout=90, intentos=4):
+    import time
     req = urllib.request.Request(url, headers={'User-Agent': 'pronostico-ft-sal/1.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    for i in range(intentos):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except Exception as e:
+            print(f'[http] intento {i + 1}/{intentos} falló ({url[:60]}...): {e}')
+            if i == intentos - 1:
+                raise
+            time.sleep(15 * (i + 1))
 
 
 # ------------------------------------------------------------------ datos en vivo
@@ -64,7 +72,10 @@ def get_gfs_wind(past_days=30, forecast_days=8, path=None):
                f'&longitude={",".join(str(o) for _ in LATS for o in LONS)}'
                '&hourly=wind_speed_10m,wind_direction_10m&wind_speed_unit=ms'
                f'&past_days={past_days}&forecast_days={forecast_days}&timezone={TZ}')
-        js = json.loads(http_get(url))
+        try:
+            js = json.loads(http_get(url))
+        except Exception:  # respaldo: endpoint general de Open-Meteo con el modelo GFS
+            js = json.loads(http_get(url.replace('/v1/gfs?', '/v1/forecast?models=gfs_seamless&')))
     js = js if isinstance(js, list) else [js]
     us, vs = [], []
     for p in js:

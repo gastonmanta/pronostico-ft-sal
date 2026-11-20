@@ -34,10 +34,17 @@ PATRONES = {
 }
 
 
-def _get(url, timeout=60):
+def _get(url, timeout=90, intentos=3):
+    import time
     req = urllib.request.Request(url, headers={'User-Agent': 'pronostico-ft-sal/1.0'})
-    with urllib.request.urlopen(req, timeout=timeout) as r:
-        return r.read()
+    for i in range(intentos):
+        try:
+            with urllib.request.urlopen(req, timeout=timeout) as r:
+                return r.read()
+        except Exception:
+            if i == intentos - 1:
+                raise
+            time.sleep(10 * (i + 1))
 
 
 def _norm(s):
