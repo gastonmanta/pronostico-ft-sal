@@ -1,0 +1,28 @@
+# Corre el pronóstico 4 veces por día y publica salida/ en GitHub Pages.
+name: pronostico-ft-sal
+on:
+  schedule:
+    - cron: '17 1,7,13,19 * * *'   # UTC (≈ 22:17, 04:17, 10:17, 16:17 en Uruguay)
+  workflow_dispatch: {}
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+concurrency: {group: pages, cancel-in-progress: true}
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r requirements.txt
+      - run: python forecast_ft_sal.py --out salida
+      - uses: actions/upload-pages-artifact@v3
+        with: {path: salida}
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: {name: github-pages}
+    steps:
+      - uses: actions/deploy-pages@v4
