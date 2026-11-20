@@ -238,7 +238,7 @@ def write_html(out_dir, fc, stamp):
 table{{border-collapse:collapse;font-size:13px;margin-top:8px}}td,th{{border-bottom:1px solid #ddd;padding:3px 8px;text-align:right}}
 th:first-child,td:first-child{{text-align:left}}small{{color:#666}}</style></head><body>
 <img src="pronostico_ft_sal.png?v={stamp:%Y%m%d%H}" alt="Pronóstico del frente de turbidez y salinidad costera">
-<table><tr><th>Día</th><th>Frente de turbidez</th><th>P(ext.)/P(retr.)</th>{''.join(f'<th>{n}</th>' for n in NAMES.values())}</tr>{rows}</table>
+<div style="overflow-x:auto"><table><tr><th>Día</th><th>Frente de turbidez</th><th>P(ext.)/P(retr.)</th>{''.join(f'<th>{n}</th>' for n in NAMES.values())}</tr>{rows}</table></div>
 <p><small>Actualizado {stamp:%d/%m/%Y %H:%M} (hora de Uruguay). Datos: EXO Isla de Flores (IF-FCien), viento GFS/NOAA vía Open-Meteo.
 Pronóstico experimental.</small></p></body></html>'''
     (out_dir / 'index.html').write_text(html, encoding='utf-8')
