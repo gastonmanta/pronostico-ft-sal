@@ -1,0 +1,9 @@
+numpy
+pandas
+scipy
+scikit-image
+matplotlib
+netCDF4
+requests
+global-land-mask
+h5py

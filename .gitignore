@@ -3,3 +3,4 @@ cv_residuals.csv
 __pycache__/
 salida/
 salida_replay*/
+ft_realtime/_nc/

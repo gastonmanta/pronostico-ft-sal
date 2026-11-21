@@ -1,0 +1,8 @@
+{
+  "products": ["MYD09GA.061", "MOD09GA.061"],
+  "band_red": "sur_refl_b01_1",
+  "band_nir": "sur_refl_b02_1",
+  "bbox": [-58.6, -36.6, -53.0, -33.5],
+  "days_back": 10,
+  "_nota": "Terra deja de tomar datos el 1/12/2026; despues de esa fecha se puede dejar solo MYD09GA.061. bbox = lon_min, lat_min, lon_max, lat_max (mismo recorte que los .nc del paper)."
+}

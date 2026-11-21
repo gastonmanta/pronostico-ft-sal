@@ -18,6 +18,8 @@ jobs:
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt
       - run: python forecast_ft_sal.py --out salida
+      - name: Agregar la última detección del FT (ft_realtime/web -> /ft/)
+        run: mkdir -p salida/ft && cp -r ft_realtime/web/. salida/ft/ 2>/dev/null || true
       - uses: actions/upload-pages-artifact@v3
         with: {path: salida}
   deploy:
