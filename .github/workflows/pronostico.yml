@@ -5,7 +5,7 @@ on:
     - cron: '17 1,7,13,19 * * *'   # UTC (≈ 22:17, 04:17, 10:17, 16:17 en Uruguay)
   workflow_dispatch: {}
 permissions:
-  contents: read
+  contents: write
   pages: write
   id-token: write
 concurrency: {group: pages, cancel-in-progress: true}
@@ -17,7 +17,26 @@ jobs:
       - uses: actions/setup-python@v5
         with: {python-version: '3.12'}
       - run: pip install -r requirements.txt
-      - run: python forecast_ft_sal.py --out salida
+      - name: Traer el archivo de pronósticos (rama archivo-pronostico)
+        run: |
+          git fetch --depth 1 origin archivo-pronostico && git checkout FETCH_HEAD -- archivo || mkdir -p archivo
+          git reset -q
+      - run: python forecast_ft_sal.py --out salida --archivo archivo
+      - name: Guardar el archivo de pronósticos
+        env: {GH_TOKEN: '${{ github.token }}'}
+        run: |
+          git config --global user.name  "github-actions[bot]"
+          git config --global user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          REPO="https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          if ! git clone -q --depth 1 --branch archivo-pronostico "$REPO" /tmp/arch; then
+            mkdir -p /tmp/arch && git -C /tmp/arch init -q -b archivo-pronostico
+          fi
+          cd /tmp/arch && rm -rf archivo && cp -r "$GITHUB_WORKSPACE/archivo" archivo
+          git add archivo
+          git diff --cached --quiet || git commit -qm "Archivo pronóstico $(date -u +%Y-%m-%dT%H:%MZ)"
+          git push "$REPO" HEAD:archivo-pronostico
+      - name: Copiar el archivo a la página
+        run: mkdir -p salida/archivo && cp archivo/*.csv salida/archivo/
       - name: Agregar la última detección del FT (ft_realtime/web -> /ft/)
         run: mkdir -p salida/ft && cp -r ft_realtime/web/. salida/ft/ 2>/dev/null || true
       - uses: actions/upload-pages-artifact@v3

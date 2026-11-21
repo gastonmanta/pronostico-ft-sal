@@ -21,7 +21,7 @@ STATIONS = {  # nombre: (lon, lat) aproximadas
  'Punta_del_Tigre': (-56.55, -34.77), 'Pajas_Blancas': (-56.37, -34.88),
  'Playa_del_Cerro': (-56.26, -34.89), 'Pocitos': (-56.15, -34.915),
  'Carrasco': (-56.05, -34.89), 'Isla_de_Flores': (-55.93, -34.945),
- 'La_Paloma': (-54.16, -34.66)}
+ 'Punta_Ballena': (-55.05, -34.91), 'La_Paloma': (-54.16, -34.66)}
 HMAX = 7
 
 d = pd.read_csv('data_tfinal_11abr.csv'); d['date'] = pd.to_datetime(d['date'], format='%d-%b-%Y')
@@ -34,8 +34,11 @@ for s in STATIONS: T['S_' + s] = d['Salinidad_' + s]
 
 def ridge_cv_pred(y):
     yrs = y.index.year.values; pred = pd.Series(np.nan, index=y.index)
-    for blk in np.array_split(np.unique(yrs), 6):
-        te = np.isin(yrs, blk)
+    if len(np.unique(yrs)) >= 6:   # validación por bloques de años
+        bloques = [np.isin(yrs, b) for b in np.array_split(np.unique(yrs), 6)]
+    else:                          # registro corto (Punta Ballena, 2025): 6 bloques temporales contiguos
+        bloques = [np.isin(np.arange(len(y)), b) for b in np.array_split(np.arange(len(y)), 6)]
+    for te in bloques:
         sc = StandardScaler().fit(X.loc[y.index[~te]])
         m = RidgeCV(alphas=np.logspace(-2, 3, 20)).fit(sc.transform(X.loc[y.index[~te]]), y[~te])
         pred[te] = m.predict(sc.transform(X.loc[y.index[te]]))
@@ -77,7 +80,7 @@ json.dump(out, open('model_coefs.json', 'w'), indent=1)
 
 # ---- figura de validación ----
 names = {'TF_dist_km': 'Frente de turbidez (km)', **{'S_' + s: s.replace('_', ' ') for s in STATIONS}}
-fig, ax = plt.subplots(2, 4, figsize=(15, 7.2))
+fig, ax = plt.subplots(3, 3, figsize=(13, 10.5))
 for a, k in zip(ax.flat, T):
     y = T[k].dropna(); p = preds[k]; ok = p.notna()
     a.hexbin(y[ok], p[ok], gridsize=35, mincnt=1, cmap='Blues', bins='log')

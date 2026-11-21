@@ -35,7 +35,7 @@ TZ = 'America/Montevideo'
 DIAS = ['lun', 'mar', 'mié', 'jue', 'vie', 'sáb', 'dom']
 NAMES = {'Punta_del_Tigre': 'Punta del Tigre', 'Pajas_Blancas': 'Pajas Blancas',
          'Playa_del_Cerro': 'Playa del Cerro', 'Pocitos': 'Pocitos', 'Carrasco': 'Carrasco',
-         'Isla_de_Flores': 'Isla de Flores', 'La_Paloma': 'La Paloma'}
+         'Isla_de_Flores': 'Isla de Flores', 'Punta_Ballena': 'Punta Ballena*', 'La_Paloma': 'La Paloma'}
 
 
 def http_get(url, timeout=90, intentos=4):
@@ -134,28 +134,37 @@ def run_forecast(coefs, wind, Q, idf_daily, t0):
 
 
 # ------------------------------------------------------------------ figura
-def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mode_txt, obs=None):
+def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mode_txt, obs=None, verif=None):
     plt.rcParams.update({'font.size': 10, 'axes.spines.top': False, 'axes.spines.right': False})
     fig = plt.figure(figsize=(14, 8.6))
     gs = fig.add_gridspec(3, 2, height_ratios=[1, 1, 0.75], width_ratios=[1.25, 1], hspace=0.55, wspace=0.42)
-    tmin = t0 - pd.Timedelta(days=5); tmax = fc.index.max() + pd.Timedelta(hours=24)
+    tmin = t0 - pd.Timedelta(days=7); tmax = fc.index.max() + pd.Timedelta(hours=24)
 
     # (a) Isla de Flores
     ax = fig.add_subplot(gs[0, 0])
+    tmin_a = tmin
     if idf_raw is not None and len(idf_raw):
         ax.plot(idf_raw.index, idf_raw.values, color='0.55', lw=0.8, label='observada (10 min)')
-    idd = idf_daily[(idf_daily.index >= tmin) & (idf_daily.index <= t0)]
+    idd = idf_daily[(idf_daily.index >= tmin_a) & (idf_daily.index <= t0)]
     ax.plot(idd.index + pd.Timedelta(hours=12), idd.values, 'ko', ms=4, label='media diaria observada')
     k = 'S_Isla_de_Flores'; x = fc.index + pd.Timedelta(hours=12)
+    # pronósticos anteriores (archivo): la última corrida de cada uno de los 3 días previos
+    if verif is not None and verif.get('previos') is not None:
+        for j, (emit, g) in enumerate(verif['previos']):
+            ax.plot(g.index + pd.Timedelta(hours=12), g.values, '-', color=['#e6550d', '#fd8d3c', '#fdbe85'][j], lw=1.3,
+                    label=f'pronóstico emitido el {emit:%d/%m}')
     ax.fill_between(x, (fc[k] - fc[k + '_err']).clip(lower=0), fc[k] + fc[k + '_err'], color='#2b7bba', alpha=0.18, lw=0)
-    ax.plot(x, fc[k], '-o', color='#2b7bba', ms=4, label='pronóstico (±1 RMSE)')
+    ax.plot(x, fc[k], '-o', color='#2b7bba', ms=4, label='pronóstico actual (±1 RMSE)')
     ax.plot(x, fc[k + '_base'], '--', color='#2b7bba', lw=1, alpha=0.7, label='sólo viento + caudal')
     if obs is not None and k in obs:
         o = obs[k].reindex(fc.index); ax.plot(x, o, 'x', color='crimson', ms=7, mew=2, label='verificación')
     ax.axvline(t0 + pd.Timedelta(hours=12), color='k', lw=0.6, ls=':')
-    ax.set_xlim(tmin, tmax); ax.set_ylim(0, 35); ax.set_ylabel('Salinidad')
+    ax.set_xlim(tmin_a, tmax); ax.set_ylim(0, 35); ax.set_ylabel('Salinidad')
     ax.set_title('a) Salinidad en Isla de Flores', loc='left', fontweight='bold')
-    ax.legend(fontsize=7.5, ncol=2, loc='upper left', frameon=False)
+    ax.legend(fontsize=6.6, ncol=2, loc='upper left', frameon=False)
+    if verif is not None:
+        ax.text(1.0, 1.02, verif['texto'], transform=ax.transAxes, ha='right', va='bottom', fontsize=7.3,
+                family='DejaVu Sans Mono', bbox=dict(boxstyle='round,pad=0.3', fc='#f7f7f7', ec='0.8'))
 
     # (b) frente de turbidez
     ax = fig.add_subplot(gs[1, 0])
@@ -190,7 +199,7 @@ def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mod
     ax.quiver(xw, spd + 1.2, w.u / spd, w.v / spd, angles='uv', scale=28, width=0.004, color='k')
     ax.axvline(t0 + pd.Timedelta(hours=12), color='k', lw=0.6, ls=':')
     ax.set_xlim(tmin, tmax); ax.set_ylim(0, max(10, spd.max() + 3)); ax.set_ylabel('m/s')
-    ax.set_title('c) Viento medio en el estuario (flecha: hacia donde sopla)', loc='left', fontweight='bold')
+    ax.set_title('c) Viento medio en el estuario', loc='left', fontweight='bold')
     for a in fig.axes:
         if hasattr(a, 'xaxis') and a.get_subplotspec() is not None and a.get_subplotspec().colspan.start == 0:
             a.xaxis.set_major_locator(matplotlib.dates.DayLocator(interval=2)); a.xaxis.set_major_formatter(matplotlib.dates.DateFormatter('%d/%m'))
@@ -222,6 +231,7 @@ def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mod
            f'entrenada con 2000–2025 (MODIS, ERA5, salinidad costera);\n'
            f'el residuo de Isla de Flores se propaga a las demás estaciones.\n'
            f'P(ext.)/P(retr.): prob. de superar P95/P5 (AUC val. cruzada {coefs["prob"]["P_ext"]["cv_auc"]:.2f}/{coefs["prob"]["P_ret"]["cv_auc"]:.2f}).\n'
+           f'* Punta Ballena: modelo con sólo 9 meses de datos (2025), preliminar.\n'
            f'Experimental, sin validación operacional.  Manta et al.')
     ax.text(0, 1, txt, va='top', fontsize=8.6, family='DejaVu Sans', linespacing=1.45)
     fig.suptitle('Pronóstico experimental: frente de turbidez y salinidad costera del Río de la Plata',
@@ -244,6 +254,73 @@ Pronóstico experimental.</small></p></body></html>'''
     (out_dir / 'index.html').write_text(html, encoding='utf-8')
 
 
+# ------------------------------------------------------------------ archivo y verificación
+VARS_ARCH = ['TF_dist_km', 'S_Isla_de_Flores_base'] + ['S_' + s for s in NAMES]
+
+
+def actualizar_archivo(dir_arch, fc, idf_raw, t0, emitido):
+    """Guarda el pronóstico emitido y la salinidad diaria observada en IdF (se acumulan corrida a corrida)."""
+    dir_arch = Path(dir_arch); dir_arch.mkdir(parents=True, exist_ok=True)
+    fp, fo = dir_arch / 'pronosticos.csv', dir_arch / 'obs_isla_de_flores_diaria.csv'
+    nuevo = fc[[c for c in VARS_ARCH if c in fc]].copy()
+    nuevo.insert(0, 'h', fc['h']); nuevo.insert(0, 't0', t0.date()); nuevo.insert(0, 'emitido', emitido.strftime('%Y-%m-%d %H:%M'))
+    nuevo.index.name = 'fecha'; nuevo = nuevo.reset_index()
+    nuevo['fecha'] = nuevo['fecha'].dt.date
+    if fp.exists():
+        prev = pd.read_csv(fp)
+        nuevo = pd.concat([prev[prev.emitido != nuevo.emitido.iloc[0]], nuevo], ignore_index=True)
+    nuevo.round(3).to_csv(fp, index=False)
+    # observado: media diaria y número de datos (144 = día completo cada 10 min)
+    g = idf_raw.resample('D').agg(['mean', 'count']); g.columns = ['sal_media', 'n']; g.index.name = 'fecha'
+    g = g[g.n > 0]
+    if fo.exists():
+        prev = pd.read_csv(fo, parse_dates=['fecha']).set_index('fecha')
+        prev = prev[~prev.index.isin(g.index)]
+        g = pd.concat([prev, g]).sort_index()
+    g.round(3).to_csv(fo)
+    return nuevo, g
+
+
+def verificar(pron, obs, t0, hmax=7, min_n=120):
+    """Compara pronósticos archivados de Isla de Flores con la media diaria observada (días con >= min_n datos)."""
+    pron = pron.copy(); pron['fecha'] = pd.to_datetime(pron['fecha']); pron['t0'] = pd.to_datetime(pron['t0'])
+    pron['emitido'] = pd.to_datetime(pron['emitido'])
+    obs = obs.copy(); obs.index = pd.to_datetime(obs.index)
+    ok = obs[obs.n >= min_n].sal_media
+    # sólo la última corrida de cada día de emisión
+    ult = pron.sort_values('emitido').groupby('t0').emitido.max()
+    p = pron[pron.emitido.isin(ult.values)].copy()
+    p['obs'] = p.fecha.map(ok); p['persist'] = p.t0.map(obs.sal_media)
+    v = p.dropna(subset=['obs'])
+    v = v[(v.h >= 1) & (v.fecha < t0)]
+    filas = []
+    for h in range(1, hmax + 1):
+        e = v[v.h == h]
+        if len(e):
+            filas.append({'h': h, 'n': len(e), 'rmse': float(np.sqrt(((e.S_Isla_de_Flores - e.obs) ** 2).mean())),
+                          'sesgo': float((e.S_Isla_de_Flores - e.obs).mean()),
+                          'rmse_persist': float(np.sqrt(((e.persist - e.obs) ** 2).mean())),
+                          'rmse_base': float(np.sqrt(((e.S_Isla_de_Flores_base - e.obs) ** 2).mean())) if 'S_Isla_de_Flores_base' in e else np.nan})
+    tabla = pd.DataFrame(filas)
+    desde = pron.t0.min()
+    if tabla.empty:
+        texto = f'Verificación en tiempo real (archivo desde {desde:%d/%m/%Y}):\nse irá completando a medida que haya\npronósticos pasados con dato observado.'
+    else:
+        lin = [f'Verificación IdF desde {desde:%d/%m/%Y} (RMSE)', ' plazo   n  modelo persist.  sesgo']
+        for _, r in tabla.iterrows():
+            if r.h in (1, 2, 3, 5, 7):
+                lin.append(f' {int(r.h)} d  {int(r.n):3d}  {r.rmse:5.1f}  {r.rmse_persist:6.1f}  {r.sesgo:+5.1f}')
+        texto = '\n'.join(lin)
+    previos = []
+    for d in range(1, 4):
+        dia = (t0 - pd.Timedelta(days=d)).normalize()
+        cand = pron[pron.t0 == dia]
+        if len(cand):
+            em = cand.emitido.max(); g = cand[cand.emitido == em].set_index('fecha').S_Isla_de_Flores
+            previos.append((em, g))
+    return {'tabla': tabla, 'texto': texto, 'previos': previos}
+
+
 # ------------------------------------------------------------------ main
 def main():
     ap = argparse.ArgumentParser()
@@ -252,6 +329,7 @@ def main():
     ap.add_argument('--sal-csv', help='CSV local de exoflores (en lugar de descargar)')
     ap.add_argument('--wind-json', help='JSON local de Open-Meteo (en lugar de descargar)')
     ap.add_argument('--out', default=str(HERE / 'salida'))
+    ap.add_argument('--archivo', default=str(HERE / 'archivo'), help='carpeta del archivo de pronósticos y observaciones')
     a = ap.parse_args()
     coefs = json.loads((HERE / 'model_coefs.json').read_text())
     cfg = json.loads((HERE / 'config.json').read_text()) if (HERE / 'config.json').exists() else {}
@@ -292,7 +370,19 @@ def main():
         mode_txt = f'OPERACIONAL · corrida {now:%d/%m/%Y %H:%M} · viento GFS (Open-Meteo)'
 
     fc, base, r0 = run_forecast(coefs, wind, Q, idf_daily, t0)
-    make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out / 'pronostico_ft_sal.png', mode_txt, obs)
+    verif = None
+    if not a.replay:
+        try:
+            pron, obs_d = actualizar_archivo(a.archivo, fc, idf_raw, t0, now)
+            verif = verificar(pron, obs_d.set_index('fecha') if 'fecha' in obs_d else obs_d, t0)
+            verif['tabla'].round(2).to_csv(out / 'verificacion_isla_de_flores.csv', index=False)
+            # la serie diaria observada del archivo permite ver más de 4 días hacia atrás
+            od = pd.read_csv(Path(a.archivo) / 'obs_isla_de_flores_diaria.csv', parse_dates=['fecha']).set_index('fecha').sal_media
+            idf_daily = od.combine_first(idf_daily)
+            print(verif['texto'])
+        except Exception as e:
+            print('[archivo] no se pudo actualizar/verificar:', e)
+    make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out / 'pronostico_ft_sal.png', mode_txt, obs, verif)
     cols = ['h', 'Q_RdlP', 'TF_dist_km', 'TF_lon', 'P_ext', 'P_ret'] + ['S_' + s for s in NAMES]
     fc[cols].round(2).to_csv(out / 'pronostico_ft_sal.csv')
     write_html(out, fc, now)
