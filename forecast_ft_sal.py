@@ -159,12 +159,12 @@ def make_figure(fc, wind, idf_raw, idf_daily, coefs, q_src, r0, t0, out_png, mod
     if obs is not None and k in obs:
         o = obs[k].reindex(fc.index); ax.plot(x, o, 'x', color='crimson', ms=7, mew=2, label='verificación')
     ax.axvline(t0 + pd.Timedelta(hours=12), color='k', lw=0.6, ls=':')
-    ax.set_xlim(tmin_a, tmax); ax.set_ylim(0, 35); ax.set_ylabel('Salinidad')
-    ax.set_title('a) Salinidad en Isla de Flores', loc='left', fontweight='bold')
+    ax.set_xlim(tmin_a, tmax); ax.set_ylim(0, 38); ax.set_ylabel('Salinidad'); ax.set_yticks([0, 10, 20, 30])
+    ax.set_title('a) Salinidad en Isla de Flores', loc='left', fontweight='bold', fontsize=10.5)
     ax.legend(fontsize=6.6, ncol=2, loc='upper left', frameon=False)
     if verif is not None:
-        ax.text(1.0, 1.02, verif['texto'], transform=ax.transAxes, ha='right', va='bottom', fontsize=7.3,
-                family='DejaVu Sans Mono', bbox=dict(boxstyle='round,pad=0.3', fc='#f7f7f7', ec='0.8'))
+        ax.text(1.0, 1.015, verif['texto'], transform=ax.transAxes, ha='right', va='bottom', fontsize=7,
+                color='#7f2704', linespacing=1.3)
 
     # (b) frente de turbidez
     ax = fig.add_subplot(gs[1, 0])
@@ -304,13 +304,10 @@ def verificar(pron, obs, t0, hmax=7, min_n=120):
     tabla = pd.DataFrame(filas)
     desde = pron.t0.min()
     if tabla.empty:
-        texto = f'Verificación en tiempo real (archivo desde {desde:%d/%m/%Y}):\nse irá completando a medida que haya\npronósticos pasados con dato observado.'
+        texto = f'Verificación en tiempo real (archivo desde {desde:%d/%m}):\nse completa a medida que se acumulan pronósticos y datos'
     else:
-        lin = [f'Verificación IdF desde {desde:%d/%m/%Y} (RMSE)', ' plazo   n  modelo persist.  sesgo']
-        for _, r in tabla.iterrows():
-            if r.h in (1, 2, 3, 5, 7):
-                lin.append(f' {int(r.h)} d  {int(r.n):3d}  {r.rmse:5.1f}  {r.rmse_persist:6.1f}  {r.sesgo:+5.1f}')
-        texto = '\n'.join(lin)
+        partes = [f"{int(r.h)} d: {r.rmse:.1f}/{r.rmse_persist:.1f} ({int(r.n)})" for _, r in tabla.iterrows() if r.h in (1, 2, 3, 5, 7)]
+        texto = f'Verificación desde {desde:%d/%m} · RMSE modelo/persistencia (n)\n' + '  ·  '.join(partes)
     previos = []
     for d in range(1, 4):
         dia = (t0 - pd.Timedelta(days=d)).normalize()
