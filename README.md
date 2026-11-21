@@ -92,3 +92,20 @@ Alternativa sin GitHub: correr el script con el Programador de tareas (Windows) 
 - El viento de entrenamiento es ERA5 y el operacional es GFS; puede haber sesgos sistemáticos entre ambos.
 - La salinidad de las playas de Montevideo es superficial y discreta; Punta del Tigre y La Paloma tienen otra frecuencia de muestreo.
 - Es un modelo estadístico lineal: suaviza los extremos y no resuelve la resuspensión.
+
+## Detección del FT en tiempo real (`ft_realtime/`)
+
+Todos los días (`.github/workflows/ft-realtime.yml`, 11:43 hora de Uruguay) se piden a NASA AppEEARS los últimos 10 días de MYD09GA.061 (Aqua) y MOD09GA.061 (Terra), bandas 1 y 2 a 500 m, en el mismo recorte que los .nc del paper. Después se corre la detección de `deteccion_ft_20260324.py` (`ft_detect.py`, con los mismos parámetros) y, si hay un día despejado más nuevo, se rehace la figura.
+
+- Página para embeber en Google Sites: `https://gastonmanta.github.io/pronostico-ft-sal/ft/`
+- Imagen directa: `https://gastonmanta.github.io/pronostico-ft-sal/ft/ft_ultima_deteccion.png`
+- `ft_realtime/web/historial.csv`: todas las detecciones (claras y nubladas) que se van acumulando.
+- `ft_realtime/web/ultima.json` y `ft_ultima_contorno.csv`: datos y contorno de la última detección válida.
+
+Necesita dos Secrets del repo (Settings → Secrets and variables → Actions): `EARTHDATA_USER` y `EARTHDATA_PASS` (usuario de urs.earthdata.nasa.gov).
+
+Diferencias con el script del paper: la máscara de tierra sale de `global-land-mask` sobre la grilla del .nc. Si copiás `land_mask_modis.mat` a `ft_realtime/` y la grilla coincide, se usa esa. El área se calcula sumando píxeles en vez de con polígonos, y la figura no usa los shapefiles de GADM.
+
+Prueba local con .nc ya bajados: `python ft_realtime/run_ft_realtime.py --nc-dir carpeta_con_nc --out /tmp/ft`.
+
+Terra deja de tomar datos el 1/12/2026. Desde esa fecha la detección sigue sólo con Aqua, que también está por terminar. La continuidad natural es VIIRS (VNP09GA / VJ109GA, bandas I1–I2), que todavía no está implementada.
