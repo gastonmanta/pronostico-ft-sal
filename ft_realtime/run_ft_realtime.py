@@ -52,12 +52,14 @@ def process(nc_files):
             except Exception as e:
                 print(f'  {sat} {ds_}: error {e}')
                 continue
-            print(f"  {sat} {ds_}: {res['quality']:6s} sub={res['frac_sub']:.2f} "
+            print(f"  {sat} {ds_}: {res['quality']:8s} sub={res['frac_sub']:.2f} "
                   f"dist={res['dist']:.1f} km area={res['area']:.0f} km²")
             rows.append(dict(Date=ds_, Sat=sat, Status=res['quality'],
                              Frac_sub=round(res['frac_sub'], 3), Area_km2=round(res['area'], 1),
-                             Dist_km=round(res['dist'], 2), Lon_cut=round(res['lon_cut'], 4)))
-            if res['quality'] != 'clear':
+                             Dist_km=round(res['dist'], 2), Lon_cut=round(res['lon_cut'], 4),
+                             Front_cloud=round(res.get('frac_nan', np.nan), 3),
+                             Front_interp=round(res.get('frac_interp', np.nan), 3)))
+            if res['quality'] not in ('clear', 'clear_gf'):
                 continue
             cand = (d, res['frac_sub'], sat, res, g)
             b = best.get(sat)
@@ -162,6 +164,7 @@ def main():
                        extra=f'Generado {checked} UTC · NASA AppEEARS {sat} MODIS 09GA.061')
         states[sat] = dict(date=dstr, sat=sat, dist_km=round(res['dist'], 1),
                            area_km2=round(res['area'], 0), lon_cut=round(res['lon_cut'], 4),
+                           quality=res['quality'], front_interp=round(res['frac_interp'], 3),
                            generated_utc=checked)
         (out / f'ultima_{sat.lower()}.json').write_text(json.dumps(states[sat], indent=2))
         np.savetxt(out / f'ft_contorno_{sat.lower()}.csv', np.column_stack((res['flon'], res['flat'])),

@@ -105,6 +105,12 @@ Todos los días (`.github/workflows/ft-realtime.yml`, 11:43 hora de Uruguay) se 
 
 Necesita dos Secrets del repo (Settings → Secrets and variables → Actions): `EARTHDATA_USER` y `EARTHDATA_PASS` (usuario de urs.earthdata.nasa.gov).
 
+Mejoras operacionales sobre el algoritmo del paper (los días que el paper ya consideraba despejados dan el mismo frente y la misma distancia):
+- Nubes chicas (a <= ~6 km de un píxel despejado) se rellenan con la clase del píxel despejado más cercano, así el frente las cruza sin cortarse.
+- Si un extremo del frente queda suelto, se une en línea recta a la costa más cercana (hasta ~60 km) y se dibuja en la figura.
+- El área estuarina es todo el mar entre la costa y el frente, sin agujeros.
+- Calidad: `clear` = criterio del paper; `clear_gf` = subregión >= 60 % despejada, frente cerrado y <= 40 % interpolado (bajo nubes o en el cierre recto). Las dos se publican; la figura indica el % interpolado.
+
 Diferencias con el script del paper: la máscara de tierra sale de `global-land-mask` sobre la grilla del .nc. Si copiás `land_mask_modis.mat` a `ft_realtime/` y la grilla coincide, se usa esa. El área se calcula sumando píxeles en vez de con polígonos, y la figura no usa los shapefiles de GADM.
 
 Prueba local con .nc ya bajados: `python ft_realtime/run_ft_realtime.py --nc-dir carpeta_con_nc --out /tmp/ft`.

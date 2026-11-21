@@ -36,6 +36,14 @@ P = dict(
     dom=(-58.5, -53.0, -36.5, -33.5),   # lon_min, lon_max, lat_min, lat_max
     lon_cut=-58.4062, lat_cut=-33.9479,
     lon_ref=-56.22,
+    # --- mejoras operacionales (no están en el paper) ---
+    gap_px=12,              # nubes a <= 12 px (~6 km) de un píxel despejado se rellenan
+    gf_sub_threshold=0.60,  # subregión mínima despejada para aceptar un frente con huecos rellenados
+    gf_interp_max=0.40,     # fracción máx. del frente interpolada (bajo nubes o cerrada en línea recta)
+    max_close_px=120,       # un extremo suelto se une a la costa si está a <= 120 px (~60 km)
+    close_px=4,             # cierre del frente contra la costa (px)
+    lon_inner=-58.0,        # el área estuarina es la parte conectada con el Río de la Plata interior
+    leak_frac=0.70,         # si el área supera 70 % del mar, el frente no cerró
 )
 
 
@@ -161,8 +169,7 @@ def detect_day(b1, b2, g: Geometry):
     ee[~g.ocean] = np.nan
 
     frac_sub = np.count_nonzero(~np.isnan(ee[g.sub])) / max(np.count_nonzero(g.sub), 1)
-    quality = 'clear' if frac_sub >= P['subregion_threshold'] else 'cloudy'
-    out = dict(quality=quality, frac_sub=frac_sub, area=np.nan, dist=np.nan, lon_cut=np.nan,
+    out = dict(quality='cloudy', frac_sub=frac_sub, area=np.nan, dist=np.nan, lon_cut=np.nan,
                flon=np.array([]), flat=np.array([]), est=None, p_cross=None, ee=ee)
 
     if np.count_nonzero(~np.isnan(ee)) <= 1000:
@@ -170,12 +177,25 @@ def detect_day(b1, b2, g: Geometry):
         return out
 
     een = ee / np.nanmax(ee)
-    binary = median_filter(een > threshold_otsu(een[~np.isnan(een)]), size=P['median_ksize'])
+    thr = threshold_otsu(een[~np.isnan(een)])
+    raw = een > thr                                   # False en nubes (como el original)
+
+    # --- (1) huecos de nubes chicos: se clasifican con el píxel despejado más cercano ---
+    valid = g.ocean & ~np.isnan(ee)
+    cloud = g.ocean & ~valid
+    dist_c, (iy, ix) = ndi.distance_transform_edt(~valid, return_indices=True)
+    small_gap = cloud & (dist_c <= P['gap_px'])
+    big_cloud = cloud & ~small_gap
+    raw = raw.copy()
+    raw[small_gap] = raw[iy[small_gap], ix[small_gap]]
+
+    binary = median_filter(raw, size=P['median_ksize'])
     binary = closing(remove_small(binary.astype(bool), P['min_object_size']), disk(P['se_disk_radius']))
     binary[~g.ocean] = False
 
     edges = sobel(binary.astype(float)) > 0
     edges[ndi.uniform_filter(g.land.astype(float), size=4) > 0] = False
+    edges[ndi.binary_dilation(big_cloud, iterations=1)] = False   # bordes de nubes grandes no son frente
     lab = measure.label(edges)
     props = measure.regionprops(lab)
     if not props:
@@ -186,16 +206,66 @@ def detect_day(b1, b2, g: Geometry):
     cidx = max(measure.find_contours((lab == big.label).astype(float), 0.5), key=len)
     r, c = cidx[:, 0].astype(int), cidx[:, 1].astype(int)
     flon, flat = g.lon[r, c], g.lat[r, c]
-    frac_nan = np.mean([np.any(np.isnan(ee[max(ri - 1, 0):ri + 2, max(ci - 1, 0):ci + 2]))
-                        for ri, ci in zip(r, c)])
-    if frac_nan > P['nan_threshold']:
-        out['quality'] = 'cloudy'
 
-    # área estuarina: píxeles turbios al oeste/norte del frente (= filtro valid_box original)
-    lon_min, _, _, lat_max = P['dom']
-    vbox = ((g.lon >= lon_min) & (g.lon <= flon.max() + 0.01) &
-            (g.lat >= flat.min() - 0.05) & (g.lat <= lat_max))
-    est = binary & vbox
+    # --- (2) cerrar el frente contra la costa ---
+    from skimage.morphology import skeletonize
+    from skimage.draw import line as draw_line
+    front = np.zeros_like(binary)
+    front[r, c] = True
+    front = ndi.binary_dilation(front, iterations=1)
+    ny, nx = front.shape
+    near_land = ndi.binary_dilation(g.land, iterations=P['close_px'])
+    edge_band = np.zeros_like(front)
+    edge_band[:2, :] = edge_band[-2:, :] = edge_band[:, :2] = edge_band[:, -2:] = True
+    ends = ndi.binary_dilation(front & near_land, structure=disk(P['close_px']))
+    closure = np.zeros_like(front)
+    sk = skeletonize(lab == big.label)
+    nb = ndi.convolve(sk.astype(int), np.ones((3, 3), int), mode='constant') - 1
+    end_y, end_x = np.nonzero(sk & (nb == 1))
+    d_land, (ly, lx) = ndi.distance_transform_edt(~g.land, return_indices=True)
+    for y0, x0 in zip(end_y, end_x):
+        if near_land[y0, x0] or edge_band[y0, x0]:
+            continue                                   # ya está anclado a la costa o al borde
+        if d_land[y0, x0] <= P['max_close_px']:
+            rr, cc = draw_line(y0, x0, ly[y0, x0], lx[y0, x0])
+            closure[rr, cc] = True
+    closure = ndi.binary_dilation(closure, iterations=1) & g.ocean
+    barrier = (front | ends | closure) & g.ocean
+
+    # --- calidad ---
+    near = lambda m: ndi.binary_dilation(m, iterations=1)[r, c]
+    frac_nan = float(np.mean(near(cloud)))           # criterio del paper (frente junto a cualquier nube)
+    n_close = int(skeletonize(closure).sum()) if closure.any() else 0
+    frac_interp = (np.sum(cloud[r, c]) / 2 + n_close) / (len(r) / 2 + n_close)   # frente sobre nubes + cierre recto
+
+    # --- (3) área estuarina: todo el mar entre la costa y el frente, sin agujeros ---
+    comp_lab, _ = ndi.label(g.ocean & ~barrier)
+    west = g.ocean & ~barrier & (g.lon < P['lon_inner'])
+    ids, cnt = np.unique(comp_lab[west], return_counts=True)
+    est, area_method = None, 'barrera'
+    if len(ids):
+        k = ids[np.argmax(cnt)]
+        comp = comp_lab == k
+        if comp.sum() < P['leak_frac'] * g.ocean.sum():
+            _, (by, bx) = ndi.distance_transform_edt(barrier, return_indices=True)
+            est = comp | (barrier & comp[by, bx])
+    if est is None:                                   # el frente no cierra: método original + relleno
+        lon_min, _, _, lat_max = P['dom']
+        vbox = ((g.lon >= lon_min) & (g.lon <= flon.max() + 0.01) &
+                (g.lat >= flat.min() - 0.05) & (g.lat <= lat_max))
+        pad = np.pad((binary & vbox) | g.land, 1, constant_values=True)
+        pad[-1, :] = False; pad[:, -1] = False        # sur y este abiertos al océano
+        est = ndi.binary_fill_holes(pad)[1:-1, 1:-1] & g.ocean & vbox
+        area_method = 'relleno'
+
+    if frac_sub >= P['subregion_threshold'] and frac_nan <= P['nan_threshold']:
+        quality = 'clear'                             # criterio del paper
+    elif (frac_sub >= P['gf_sub_threshold'] and frac_interp <= P['gf_interp_max']
+          and area_method == 'barrera'):
+        quality = 'clear_gf'                          # válido, con tramos interpolados bajo nubes
+    else:
+        quality = 'cloudy'
+    out['quality'] = quality
     area = float(np.sum(g.pix_km2[est]))
 
     # NCL: distancia media a lo largo de las 15 transectas costeras
@@ -210,8 +280,9 @@ def detect_day(b1, b2, g: Geometry):
     lon_v, dist_v = float(np.mean(lons)), float(np.mean(dists))
     p_cross = g.path_middle[np.argmin(np.abs(g.path_middle[:, 0] - lon_v))]
 
-    out.update(area=area, dist=dist_v, lon_cut=lon_v, flon=flon, flat=flat,
-               est=est, p_cross=p_cross, frac_nan=frac_nan)
+    out.update(area=area, dist=dist_v, lon_cut=lon_v, flon=flon, flat=flat, est=est,
+               p_cross=p_cross, frac_nan=frac_nan, frac_interp=frac_interp, closure=closure, area_method=area_method,
+               big_cloud=big_cloud, small_gap=small_gap)
     return out
 
 
@@ -231,6 +302,8 @@ def make_figure(res, g: Geometry, date_str, sat, out_png, extra=''):
     info = (f"{date_str}  ·  MODIS {sat}\n"
             f"Distancia FT (NCL): {res['dist']:.0f} km\n"
             f"Área estuarina: {res['area']:,.0f} km²").replace(',', '.')
+    if res.get('quality') == 'clear_gf':
+        info += f"\nFrente interpolado: {100 * res['frac_interp']:.0f} %"
     for i, ax in enumerate(axs):
         ax.pcolormesh(g.lon, g.lat, np.where(g.land, 1, np.nan), cmap=land_cmap,
                       shading='auto', zorder=2)
@@ -247,10 +320,23 @@ def make_figure(res, g: Geometry, date_str, sat, out_png, extra=''):
                 ax.contourf(g.lon, g.lat, res['est'].astype(float), [0.5, 1.5],
                             colors=['#ff9933'], alpha=0.6, zorder=1)
             ax.set_title('Zona estuarina turbia y frente detectado')
+            if res.get('big_cloud') is not None:
+                ax.contourf(g.lon, g.lat, res['big_cloud'].astype(float), [0.5, 1.5],
+                            colors=['#bdbdbd'], alpha=0.7, zorder=1.5)
+                ax.contourf(g.lon, g.lat, res['small_gap'].astype(float), [0.5, 1.5],
+                            colors=['#d9d9d9'], alpha=0.6, zorder=1.5)
         if len(res['flon']):
             ax.plot(res['flon'], res['flat'], 'r-', lw=2.2, zorder=4, label='Frente de turbidez')
         ax.plot(g.path_visual[:, 0], g.path_visual[:, 1], color='hotpink', ls='--', lw=1.3,
                 zorder=5, label='Transecta costera')
+        if i == 1 and res.get('big_cloud') is not None:
+            from matplotlib.patches import Patch
+            ax.add_artist(ax.legend(handles=[Patch(color='#bdbdbd', label='Nubes'),
+                                             Patch(color='#d9d9d9', label='Nubes chicas (rellenadas)')],
+                                    loc='upper right', fontsize=8))
+        if res.get('closure') is not None and res['closure'].any():
+            yy, xx = np.nonzero(res['closure'])
+            ax.scatter(g.lon[yy, xx], g.lat[yy, xx], s=0.3, color='red', alpha=0.5, zorder=4)
         if res['p_cross'] is not None:
             ax.scatter(*res['p_cross'], marker='+', color='magenta', s=250, lw=4, zorder=10)
         ax.text(0.50, 0.97, info, transform=ax.transAxes, va='top', ha='center', fontsize=11,
