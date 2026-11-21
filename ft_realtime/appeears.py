@@ -19,9 +19,16 @@ API = 'https://appeears.earthdatacloud.nasa.gov/api'
 
 
 def login(user=None, password=None):
-    user = user or os.environ['EARTHDATA_USER']
-    password = password or os.environ['EARTHDATA_PASS']
+    user = (user or os.environ.get('EARTHDATA_USER', '')).strip()
+    password = (password or os.environ.get('EARTHDATA_PASS', '')).strip('\r\n')
+    if not user or not password:
+        raise SystemExit('Faltan los secrets EARTHDATA_USER / EARTHDATA_PASS')
     r = requests.post(f'{API}/login', auth=(user, password), timeout=60)
+    if r.status_code == 401:
+        raise SystemExit(f'AppEEARS rechazó el login de "{user}" (401). Revisá EARTHDATA_PASS '
+                         f'(¿cambiaste la contraseña?) y que puedas entrar a '
+                         f'https://appeears.earthdatacloud.nasa.gov con ese usuario. '
+                         f'Largo de la contraseña recibida: {len(password)} caracteres.')
     r.raise_for_status()
     return r.json()['token']
 
