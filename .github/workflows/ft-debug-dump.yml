@@ -1,0 +1,30 @@
+# Auxiliar: baja días puntuales de AppEEARS y los deja en la rama debug-data (para mejorar el algoritmo).
+name: ft-debug-dump
+on:
+  workflow_dispatch:
+    inputs:
+      dates:
+        description: 'Fechas separadas por coma (YYYY-MM-DD)'
+        default: '2026-11-08,2026-11-09,2026-11-11,2026-11-18,2026-11-19'
+permissions:
+  contents: write
+jobs:
+  dump:
+    runs-on: ubuntu-latest
+    timeout-minutes: 200
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with: {python-version: '3.12'}
+      - run: pip install -r ft_realtime/requirements.txt
+      - env:
+          EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
+          EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
+        run: python ft_realtime/dump_days.py "${{ inputs.dates }}" ft_realtime/debug
+      - run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git checkout -b debug-data
+          git add -f ft_realtime/debug
+          git commit -m "Datos de depuración: ${{ inputs.dates }}"
+          git push -f origin debug-data
