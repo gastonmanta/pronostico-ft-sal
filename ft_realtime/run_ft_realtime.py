@@ -11,6 +11,7 @@ Uso:
 """
 import argparse
 import json
+import shutil
 import sys
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
@@ -35,7 +36,7 @@ def sat_of(path):
 
 
 def process(nc_files):
-    rows, best, cache = [], None, {}
+    rows, best, cache = [], {}, {}
     for f in nc_files:
         sat = sat_of(f)
         ds, lon2d, lat2d, dates, band = fd.read_appeears_nc(f)
@@ -59,22 +60,33 @@ def process(nc_files):
             if res['quality'] != 'clear':
                 continue
             cand = (d, res['frac_sub'], sat, res, g)
-            if best is None or (cand[0], cand[1]) > (best[0], best[1]):
-                best = cand
+            b = best.get(sat)
+            if b is None or (cand[0], cand[1]) > (b[0], b[1]):
+                best[sat] = cand
         ds.close()
     return rows, best
 
 
-def write_html(out, last, checked_utc):
-    if last:
-        dias = (date.today() - date.fromisoformat(last['date'])).days
-        resumen = (f"<b>{last['date']}</b> (MODIS {last['sat']}) · distancia del FT "
-                   f"<b>{last['dist_km']:.0f} km</b> · área estuarina "
-                   f"<b>{last['area_km2']:,.0f} km²</b>".replace(',', '.'))
-        hace = f"hace {dias} día{'s' if dias != 1 else ''}"
-        img = f"<img src='ft_ultima_deteccion.png?v={last['date']}' alt='Última detección del FT'>"
-    else:
-        resumen, hace, img = 'Todavía no hay una detección válida.', '', ''
+SATS = ('Aqua', 'Terra')
+
+
+def _resumen(st):
+    dias = (date.today() - date.fromisoformat(st['date'])).days
+    return (f"<b>{st['date']}</b> · distancia del FT <b>{st['dist_km']:.0f} km</b> · "
+            f"área estuarina <b>{st['area_km2']:,.0f} km²</b>".replace(',', '.')
+            + f" <span class='s'>(hace {dias} día{'s' if dias != 1 else ''})</span>")
+
+
+def write_html(out, states, checked_utc):
+    bloques = []
+    for sat in SATS:
+        st = states.get(sat)
+        if st:
+            bloques.append(f"<h3>MODIS {sat}</h3><p>Última detección válida: {_resumen(st)}</p>"
+                           f"<img src='ft_ultima_{sat.lower()}.png?v={st['date']}' "
+                           f"alt='Última detección del FT con MODIS {sat}'>")
+        else:
+            bloques.append(f"<h3>MODIS {sat}</h3><p>Sin detección válida todavía.</p>")
     html = f"""<!DOCTYPE html>
 <html lang="es"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -82,14 +94,13 @@ def write_html(out, last, checked_utc):
 <title>Frente de turbidez del Río de la Plata – última detección</title>
 <style>
  body{{font-family:system-ui,-apple-system,Segoe UI,Roboto,sans-serif;margin:0;padding:12px;color:#222;background:#fff}}
- img{{width:100%;height:auto;border:1px solid #ddd}}
- p{{margin:6px 0;font-size:15px}} .s{{color:#666;font-size:12.5px}}
+ img{{width:100%;height:auto;border:1px solid #ddd;margin-bottom:14px}}
+ h3{{margin:10px 0 2px;font-size:17px}} p{{margin:4px 0 8px;font-size:15px}} .s{{color:#666;font-size:12.5px}}
 </style></head><body>
-<p>Última detección válida: {resumen} <span class="s">({hace})</span></p>
-{img}
-<p class="s">Detección automática diaria con MODIS Aqua/Terra (bandas 1 y 2, 500 m) bajados de NASA AppEEARS,
+{''.join(bloques)}
+<p class="s">Detección automática diaria con MODIS Aqua y Terra (bandas 1 y 2, 500 m) bajados de NASA AppEEARS,
 algoritmo de Manta et al. (2026, JGR Oceans, en revisión). Sólo se muestran días sin nubes sobre el frente.
-Última revisión: {checked_utc} UTC.</p>
+Terra deja de tomar datos el 1/12/2026. Última revisión: {checked_utc} UTC.</p>
 </body></html>"""
     (out / 'index.html').write_text(html, encoding='utf-8')
 
@@ -99,13 +110,20 @@ def main():
     ap.add_argument('--days', type=int, default=CFG['days_back'])
     ap.add_argument('--out', default=str(HERE / 'web'))
     ap.add_argument('--nc-dir', default=None, help='usar .nc locales en vez de AppEEARS')
-    ap.add_argument('--force', action='store_true', help='rehacer la figura aunque no haya fecha nueva')
+    ap.add_argument('--force', action='store_true', help='rehacer las figuras aunque no haya fecha nueva')
     a = ap.parse_args()
 
     out = Path(a.out)
     out.mkdir(parents=True, exist_ok=True)
-    state_f = out / 'ultima.json'
-    last = json.loads(state_f.read_text()) if state_f.exists() else None
+    states = {}
+    for sat in SATS:
+        f = out / f'ultima_{sat.lower()}.json'
+        if f.exists():
+            states[sat] = json.loads(f.read_text())
+    if 'Aqua' not in states and (out / 'ultima.json').exists():   # estado de la versión anterior
+        old = json.loads((out / 'ultima.json').read_text())
+        if old.get('sat') == 'Aqua':
+            states['Aqua'] = old
 
     if a.nc_dir:
         nc_files = sorted(Path(a.nc_dir).glob('*.nc'))
@@ -120,7 +138,6 @@ def main():
         print('No hay archivos .nc para procesar')
     rows, best = process(nc_files)
 
-    # historial (se acumula entre corridas)
     hist_f = out / 'historial.csv'
     if rows:
         new = pd.DataFrame(rows)
@@ -130,24 +147,35 @@ def main():
         new.to_csv(hist_f, index=False)
 
     checked = datetime.now(timezone.utc).strftime('%Y-%m-%d %H:%M')
-    if best is not None:
-        d, _, sat, res, g = best
+    for sat in SATS:
+        if sat not in best:
+            print(f'{sat}: ningún día despejado en la ventana')
+            continue
+        d, _, _, res, g = best[sat]
         dstr = d.strftime('%Y-%m-%d')
-        if a.force or last is None or dstr >= last['date']:
-            fd.make_figure(res, g, dstr, sat, out / 'ft_ultima_deteccion.png',
-                           extra=f'Generado {checked} UTC · NASA AppEEARS MYD09GA/MOD09GA.061')
-            last = dict(date=dstr, sat=sat, dist_km=round(res['dist'], 1),
-                        area_km2=round(res['area'], 0), lon_cut=round(res['lon_cut'], 4),
-                        generated_utc=checked)
-            state_f.write_text(json.dumps(last, indent=2))
-            np.savetxt(out / 'ft_ultima_contorno.csv', np.column_stack((res['flon'], res['flat'])),
-                       delimiter=',', header='longitude,latitude', comments='', fmt='%.5f')
-            print(f'Nueva detección publicada: {dstr} ({sat})')
-        else:
-            print(f'La detección más nueva ({dstr}) no supera la publicada ({last["date"]})')
-    else:
-        print('Ningún día despejado en la ventana; se mantiene la figura anterior')
-    write_html(out, last, checked)
+        prev = states.get(sat)
+        if not (a.force or prev is None or dstr >= prev['date'] or
+                not (out / f'ft_ultima_{sat.lower()}.png').exists()):
+            print(f'{sat}: {dstr} no supera la publicada ({prev["date"]})')
+            continue
+        fd.make_figure(res, g, dstr, sat, out / f'ft_ultima_{sat.lower()}.png',
+                       extra=f'Generado {checked} UTC · NASA AppEEARS {sat} MODIS 09GA.061')
+        states[sat] = dict(date=dstr, sat=sat, dist_km=round(res['dist'], 1),
+                           area_km2=round(res['area'], 0), lon_cut=round(res['lon_cut'], 4),
+                           generated_utc=checked)
+        (out / f'ultima_{sat.lower()}.json').write_text(json.dumps(states[sat], indent=2))
+        np.savetxt(out / f'ft_contorno_{sat.lower()}.csv', np.column_stack((res['flon'], res['flat'])),
+                   delimiter=',', header='longitude,latitude', comments='', fmt='%.5f')
+        print(f'{sat}: nueva detección publicada {dstr}')
+
+    # figura "más reciente de cualquiera de los dos" (compatibilidad con la versión anterior)
+    if states:
+        sat_new = max(states, key=lambda k: states[k]['date'])
+        src = out / f'ft_ultima_{sat_new.lower()}.png'
+        if src.exists():
+            shutil.copyfile(src, out / 'ft_ultima_deteccion.png')
+            (out / 'ultima.json').write_text(json.dumps(states[sat_new], indent=2))
+    write_html(out, states, checked)
 
 
 if __name__ == '__main__':

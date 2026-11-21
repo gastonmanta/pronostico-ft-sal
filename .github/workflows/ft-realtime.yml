@@ -4,7 +4,11 @@ name: ft-realtime
 on:
   schedule:
     - cron: '43 14 * * *'   # 14:43 UTC = 11:43 en Uruguay
-  workflow_dispatch: {}
+  workflow_dispatch:
+    inputs:
+      days:
+        description: 'Días hacia atrás a pedir a AppEEARS'
+        default: '10'
 permissions:
   contents: write
   actions: write
@@ -22,7 +26,7 @@ jobs:
         env:
           EARTHDATA_USER: ${{ secrets.EARTHDATA_USER }}
           EARTHDATA_PASS: ${{ secrets.EARTHDATA_PASS }}
-        run: python ft_realtime/run_ft_realtime.py --out ft_realtime/web
+        run: python ft_realtime/run_ft_realtime.py --out ft_realtime/web --days ${{ inputs.days || '10' }}
       - name: Guardar resultados en el repo
         run: |
           git config user.name  "github-actions[bot]"

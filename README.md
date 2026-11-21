@@ -98,7 +98,8 @@ Alternativa sin GitHub: correr el script con el Programador de tareas (Windows) 
 Todos los días (`.github/workflows/ft-realtime.yml`, 11:43 hora de Uruguay) se piden a NASA AppEEARS los últimos 10 días de MYD09GA.061 (Aqua) y MOD09GA.061 (Terra), bandas 1 y 2 a 500 m, en el mismo recorte que los .nc del paper. Después se corre la detección de `deteccion_ft_20260324.py` (`ft_detect.py`, con los mismos parámetros) y, si hay un día despejado más nuevo, se rehace la figura.
 
 - Página para embeber en Google Sites: `https://gastonmanta.github.io/pronostico-ft-sal/ft/`
-- Imagen directa: `https://gastonmanta.github.io/pronostico-ft-sal/ft/ft_ultima_deteccion.png`
+- Imágenes directas: `.../ft/ft_ultima_aqua.png`, `.../ft/ft_ultima_terra.png` (última detección válida de cada satélite) y `.../ft/ft_ultima_deteccion.png` (la más reciente de las dos).
+- Para mirar más atrás: Actions → ft-realtime → Run workflow → "Días hacia atrás" (p. ej. 30).
 - `ft_realtime/web/historial.csv`: todas las detecciones (claras y nubladas) que se van acumulando.
 - `ft_realtime/web/ultima.json` y `ft_ultima_contorno.csv`: datos y contorno de la última detección válida.
 
