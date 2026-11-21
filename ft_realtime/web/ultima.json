@@ -1,8 +1,10 @@
 {
-  "date": "2026-11-11",
+  "date": "2026-11-19",
   "sat": "Aqua",
-  "dist_km": -28.5,
-  "area_km2": 11856.0,
-  "lon_cut": -56.3801,
-  "generated_utc": "2026-11-21 19:38"
+  "dist_km": 15.2,
+  "area_km2": 14666.0,
+  "lon_cut": -56.0757,
+  "quality": "clear_gf",
+  "front_interp": 0.195,
+  "generated_utc": "2026-11-21 20:47"
 }
