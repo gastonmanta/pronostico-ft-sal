@@ -1,8 +1,10 @@
 {
-  "date": "2026-11-09",
+  "date": "2026-11-21",
   "sat": "Terra",
-  "dist_km": 10.0,
-  "area_km2": 17282.0,
-  "lon_cut": -56.1365,
-  "generated_utc": "2026-11-21 19:38"
+  "dist_km": 49.7,
+  "area_km2": 17409.0,
+  "lon_cut": -55.8249,
+  "quality": "clear_gf",
+  "front_interp": 0.144,
+  "generated_utc": "2026-11-24 01:58"
 }
